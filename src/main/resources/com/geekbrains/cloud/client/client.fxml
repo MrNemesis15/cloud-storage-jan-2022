@@ -9,5 +9,5 @@
       fx:controller="com.geekbrains.cloud.client.ClientController"
       xmlns:fx="http://javafx.com/fxml/1">
       <ListView fx:id="listView" prefHeight="528.0" prefWidth="331.0" />
-      <TextField fx:id="textField" onAction="#sendMessage" prefHeight="86.0" prefWidth="331.0" />
+      <TextField fx:id="textField" editable="false" onAction="#sendMessage" prefHeight="86.0" prefWidth="331.0" />
 </VBox>
