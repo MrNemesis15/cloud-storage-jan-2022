@@ -1,38 +1,56 @@
 package com.geekbrains.cloud.client;
 
+import com.geekbrains.cloud.utils.SenderUtils;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.Initializable;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ResourceBundle;
 
 public class ClientController implements Initializable {
-    public ListView<String> listView;
+
+    private static final int SIZE = 256;
+
+    public ListView<String> clientView;
+    public ListView<String> serverView;
     public TextField textField;
+    public Label clientLabel;
+    public Label serverLabel;
+    public Label server;
+    public Label client;
+
 
     private DataInputStream is;
     private DataOutputStream os;
+    private File currentDir;
+    private byte[] buf;
 
-    public void sendMessage(ActionEvent actionEvent) throws IOException {
-        String message = textField.getText ();
-        os.writeUTF (message);
-        os.flush ();
-        textField.clear ();
-        //listView.getItems ().add (message);
-    }
 
     private void read() {
         try {
             while (true) {
-                String message = is.readUTF ();
-                Platform.runLater (() -> listView.getItems ().add (message));
+                String command = is.readUTF ();
+                if (command.equals ("#LIST")) {
+                    serverView.getItems ().clear ();
+                    int count = is.readInt ();
+                    for (int i = 0; i < count; i++) {
+                        String fileName = is.readUTF ();
+                        Platform.runLater (() -> {
+                            serverView.getItems ().add (fileName);
+                        });
+                    }
+                }
+                if (command.equals ("#SEND#FILE#")) {
+                    SenderUtils.getFileFromInputStream (is, currentDir);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace ();
@@ -40,9 +58,37 @@ public class ClientController implements Initializable {
         }
     }
 
+
+    private void fillCurrentDirFiles() {
+        clientView.getItems ().clear ();
+        clientView.getItems ().add ("..");
+        clientView.getItems ().addAll (currentDir.list ());
+    }
+
+    private void initClickListener() {
+        clientView.setOnMouseClicked (e -> {
+            if (e.getClickCount () == 2) {
+                String fileName = clientView.getSelectionModel ().getSelectedItem ();
+                System.out.println ("Вабран файл: " + fileName);
+                Path path = currentDir.toPath ().resolve (fileName);
+                if (Files.isDirectory (path)) {
+                    currentDir = path.toFile ();
+                    fillCurrentDirFiles ();
+                    textField.clear ();
+                } else {
+                    textField.setText (fileName);
+                }
+            }
+        });
+    }
+
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         try {
+            buf = new byte[256];
+            currentDir = new File (System.getProperty ("user.home"));
+            fillCurrentDirFiles ();
+            initClickListener ();
             Socket socket = new Socket ("localhost", 8189);
             is = new DataInputStream (socket.getInputStream ());
             os = new DataOutputStream (socket.getOutputStream ());
@@ -54,4 +100,19 @@ public class ClientController implements Initializable {
             e.printStackTrace ();
         }
     }
+
+    public void download(ActionEvent actionEvent) throws IOException {
+        String fileName = serverView.getSelectionModel ().getSelectedItem ();
+        os.writeUTF ("#GET#FILE#");
+        os.writeUTF (fileName);
+        os.flush ();
+
+    }
+
+    public void upload(ActionEvent actionEvent) throws IOException {
+        String fileName = clientView.getSelectionModel ().getSelectedItem ();
+        File currentFile = currentDir.toPath ().resolve (fileName).toFile ();
+        SenderUtils.loadFileFromOutputStream (os, currentFile);
+    }
 }
+
