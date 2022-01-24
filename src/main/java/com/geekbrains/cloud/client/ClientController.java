@@ -21,7 +21,6 @@ public class ClientController implements Initializable {
 
     public ListView<String> clientView;
     public ListView<String> serverView;
-    public TextField textField;
     public Label clientLabel;
     public Label serverLabel;
     public Label server;
@@ -31,6 +30,7 @@ public class ClientController implements Initializable {
     private DataInputStream is;
     private DataOutputStream os;
     private File currentDir;
+//    private File serverDir;
     private byte[] buf;
 
 
@@ -38,8 +38,9 @@ public class ClientController implements Initializable {
         try {
             while (true) {
                 String command = is.readUTF ();
+                System.out.println ("Received command: " + command);
                 if (command.equals ("#LIST")) {
-                    serverView.getItems ().clear ();
+                    Platform.runLater (() -> serverView.getItems ().clear ());
                     int count = is.readInt ();
                     for (int i = 0; i < count; i++) {
                         String fileName = is.readUTF ();
@@ -50,6 +51,7 @@ public class ClientController implements Initializable {
                 }
                 if (command.equals ("#SEND#FILE#")) {
                     SenderUtils.getFileFromInputStream (is, currentDir);
+                    Platform.runLater (this::fillCurrentDirFiles);
                 }
             }
         } catch (Exception e) {
@@ -63,6 +65,41 @@ public class ClientController implements Initializable {
         clientView.getItems ().clear ();
         clientView.getItems ().add ("..");
         clientView.getItems ().addAll (currentDir.list ());
+        clientLabel.setText (getClientFilesDetails ());
+        serverLabel.setText (getServerFilesDetails ());
+    }
+
+    private String getServerFilesDetails() {
+        File[] files = currentDir.listFiles ();
+        long size = 0;
+        String label;
+        if (files != null) {
+            label = files.length + " files in current dir. ";
+            for (File file : files) {
+                size += file.length ();
+            }
+            label += "Summary size: " + size + " bytes.";
+        } else {
+            label = "Current dir is empty";
+        }
+        return label;
+    }
+
+
+    private String getClientFilesDetails() {
+        File[] files = currentDir.listFiles ();
+        long size = 0;
+        String label;
+        if (files != null) {
+            label = files.length + " files in current dir. ";
+            for (File file : files) {
+                size += file.length ();
+            }
+            label += "Summary size: " + size + " bytes.";
+        } else {
+            label = "Current dir is empty";
+        }
+        return label;
     }
 
     private void initClickListener() {
@@ -74,9 +111,6 @@ public class ClientController implements Initializable {
                 if (Files.isDirectory (path)) {
                     currentDir = path.toFile ();
                     fillCurrentDirFiles ();
-                    textField.clear ();
-                } else {
-                    textField.setText (fileName);
                 }
             }
         });
