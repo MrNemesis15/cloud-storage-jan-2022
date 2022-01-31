@@ -15,6 +15,15 @@ import java.util.Set;
 @Slf4j
 public class NioEchoServer {
 
+    /**
+     * Сделать терминал, которые умеет обрабатывать команды:
+     * ls - список файлов в директории
+     * cd dir_name - переместиться в директорию
+     * cat file_name - распечатать содержание файла на экран
+     * mkdir dir_name - создать директорию в текущей
+     * touch file_name - создать пустой файл в текущей директории
+     * */
+
     private ServerSocketChannel serverChannel;
     private Selector selector;
     private ByteBuffer buf;
@@ -85,11 +94,3 @@ public class NioEchoServer {
         clientProcessor.onClientAccepted(channel);
     }
 }
-
-/**
- * Сделать терминал, которые умеет обрабатывать команды:
- * cat file_name - распечатать содержание файла на экран
- * mkdir dir_name - создать директорию в текущей
- * touch file_name - создать пустой файл в текущей директории
- * */
-

@@ -1,6 +1,10 @@
 package com.geekbrains.cloud.client;
 
-import com.geekbrains.cloud.utils.SenderUtils;
+import com.geekbrains.cloud.model.FileMessage;
+import com.geekbrains.cloud.model.FileRequest;
+import com.geekbrains.cloud.model.FilesList;
+import io.netty.handler.codec.serialization.ObjectDecoderInputStream;
+import io.netty.handler.codec.serialization.ObjectEncoderOutputStream;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.Initializable;
@@ -8,92 +12,46 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 
-import java.io.*;
-import java.net.Socket;
+import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
 import java.util.ResourceBundle;
 
 public class ClientController implements Initializable {
 
-    private static final int SIZE = 256;
-
     public ListView<String> clientView;
     public ListView<String> serverView;
+    public TextField textField;
     public Label clientLabel;
     public Label serverLabel;
-    public Label server;
-    public Label client;
-
-
-    private DataInputStream is;
-    private DataOutputStream os;
-    private File currentDir;
-//    private File serverDir;
-    private byte[] buf;
-
-
-    private void read() {
-        try {
-            while (true) {
-                String command = is.readUTF ();
-                System.out.println ("Received command: " + command);
-                if (command.equals ("#LIST")) {
-                    Platform.runLater (() -> serverView.getItems ().clear ());
-                    int count = is.readInt ();
-                    for (int i = 0; i < count; i++) {
-                        String fileName = is.readUTF ();
-                        Platform.runLater (() -> {
-                            serverView.getItems ().add (fileName);
-                        });
-                    }
-                }
-                if (command.equals ("#SEND#FILE#")) {
-                    SenderUtils.getFileFromInputStream (is, currentDir);
-                    Platform.runLater (this::fillCurrentDirFiles);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace ();
-            //add reconnect to server
-        }
-    }
-
+    private Path currentDir;
+    private Net net;
+    // sync mode
+    // recommended mode
+    private ObjectEncoderOutputStream os;
+    private ObjectDecoderInputStream is;
 
     private void fillCurrentDirFiles() {
-        clientView.getItems ().clear ();
-        clientView.getItems ().add ("..");
-        clientView.getItems ().addAll (currentDir.list ());
-        clientLabel.setText (getClientFilesDetails ());
-        serverLabel.setText (getServerFilesDetails ());
+        Platform.runLater(() -> {
+            clientView.getItems().clear();
+            clientView.getItems().add("..");
+            clientView.getItems().addAll(currentDir.toFile().list());
+            clientLabel.setText(getClientFilesDetails());
+        });
     }
-
-    private String getServerFilesDetails() {
-        File[] files = currentDir.listFiles ();
-        long size = 0;
-        String label;
-        if (files != null) {
-            label = files.length + " files in current dir. ";
-            for (File file : files) {
-                size += file.length ();
-            }
-            label += "Summary size: " + size + " bytes.";
-        } else {
-            label = "Current dir is empty";
-        }
-        return label;
-    }
-
 
     private String getClientFilesDetails() {
-        File[] files = currentDir.listFiles ();
+        File[] files = currentDir.toFile().listFiles();
         long size = 0;
         String label;
         if (files != null) {
             label = files.length + " files in current dir. ";
             for (File file : files) {
-                size += file.length ();
+                size += file.length();
             }
             label += "Summary size: " + size + " bytes.";
         } else {
@@ -103,14 +61,14 @@ public class ClientController implements Initializable {
     }
 
     private void initClickListener() {
-        clientView.setOnMouseClicked (e -> {
-            if (e.getClickCount () == 2) {
-                String fileName = clientView.getSelectionModel ().getSelectedItem ();
-                System.out.println ("Вабран файл: " + fileName);
-                Path path = currentDir.toPath ().resolve (fileName);
-                if (Files.isDirectory (path)) {
-                    currentDir = path.toFile ();
-                    fillCurrentDirFiles ();
+        clientView.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                String fileName = clientView.getSelectionModel().getSelectedItem();
+                System.out.println("Выбран файл: " + fileName);
+                Path path = currentDir.resolve(fileName);
+                if (Files.isDirectory(path)) {
+                    currentDir = path;
+                    fillCurrentDirFiles();
                 }
             }
         });
@@ -119,34 +77,42 @@ public class ClientController implements Initializable {
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         try {
-            buf = new byte[256];
-            currentDir = new File (System.getProperty ("user.home"));
-            fillCurrentDirFiles ();
-            initClickListener ();
-            Socket socket = new Socket ("localhost", 8189);
-            is = new DataInputStream (socket.getInputStream ());
-            os = new DataOutputStream (socket.getOutputStream ());
-            Thread readThread = new Thread (this::read);
-            readThread.setDaemon (true);
-            readThread.start ();
-
+            currentDir = Paths.get(System.getProperty("user.home"));
+            fillCurrentDirFiles();
+            initClickListener();
+            net = Net.getInstance();
+            net.setCallback(message -> {
+                switch (message.getType()) {
+                    case FILE_MESSAGE:
+                        FileMessage fileMessage = (FileMessage) message;
+                        Files.write(currentDir.resolve(fileMessage.getFileName()), fileMessage.getBytes());
+                        fillCurrentDirFiles();
+                        break;
+                    case LIST:
+                        FilesList list = (FilesList) message;
+                        updateServerView(list.getList());
+                }
+            });
         } catch (Exception e) {
-            e.printStackTrace ();
+            e.printStackTrace();
         }
     }
 
-    public void download(ActionEvent actionEvent) throws IOException {
-        String fileName = serverView.getSelectionModel ().getSelectedItem ();
-        os.writeUTF ("#GET#FILE#");
-        os.writeUTF (fileName);
-        os.flush ();
+    private void updateServerView(List<String> names) {
+        Platform.runLater(() -> {
+            serverView.getItems().clear();
+            serverView.getItems().addAll(names);
+        });
+    }
 
+    public void download(ActionEvent actionEvent) throws IOException {
+        String fileName = serverView.getSelectionModel().getSelectedItem();
+        net.write(new FileRequest(fileName));
     }
 
     public void upload(ActionEvent actionEvent) throws IOException {
-        String fileName = clientView.getSelectionModel ().getSelectedItem ();
-        File currentFile = currentDir.toPath ().resolve (fileName).toFile ();
-        SenderUtils.loadFileFromOutputStream (os, currentFile);
+        String fileName = clientView.getSelectionModel().getSelectedItem();
+        FileMessage fileMessage = new FileMessage(currentDir.resolve(fileName));
+        net.write(fileMessage);
     }
 }
-

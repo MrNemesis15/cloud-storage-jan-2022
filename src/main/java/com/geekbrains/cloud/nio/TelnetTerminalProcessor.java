@@ -34,9 +34,6 @@ public class TelnetTerminalProcessor implements ClientProcessor {
             );
         } else if (msg.startsWith("cd")) {
             String dst = msg.split(" +")[1];
-            if (dst.length() != 2){
-                log.info ("error");
-            }
             if (Files.isDirectory(currentDir.resolve(dst))) {
                 currentDir = currentDir.resolve(dst);
             }
